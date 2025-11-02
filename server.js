@@ -1,54 +1,37 @@
 import express from "express";
 import cors from "cors";
+import path from "path";
 import multer from "multer";
-import fs from "fs";
-import { PDFDocument } from "pdf-lib";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 5000;
-
-// Enable CORS for frontend
 app.use(cors());
 app.use(express.json());
 
-// Multer setup (for uploads)
-const upload = multer({ dest: "uploads/" });
+// ✅ Serve uploaded files 
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Test route
-app.get("/", (req, res) => {
-  res.send("✅ PDF Editor API running successfully!");
+// ✅ File upload setup
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/");
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + "-" + file.originalname);
+  },
 });
+const upload = multer({ storage });
 
-/**
- * POST /merge
- * Upload multiple PDFs and return one merged PDF
- */
-app.post("/merge", upload.array("pdfs"), async (req, res) => {
-  try {
-    const mergedPdf = await PDFDocument.create();
-
-    for (const file of req.files) {
-      const pdfBytes = fs.readFileSync(file.path);
-      const pdf = await PDFDocument.load(pdfBytes);
-      const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
-      copiedPages.forEach((page) => mergedPdf.addPage(page));
-    }
-
-    const mergedPdfBytes = await mergedPdf.save();
-
-    // Cleanup temporary files
-    req.files.forEach((f) => fs.unlinkSync(f.path));
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "attachment; filename=merged.pdf");
-    res.send(Buffer.from(mergedPdfBytes));
-  } catch (err) {
-    console.error("❌ Merge Error:", err);
-    res.status(500).send("Error merging PDFs");
+// ✅ Upload route
+app.post("/api/upload", upload.single("pdf"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
   }
+  res.json({ filename: req.file.filename });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-});
+const PORT = 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
